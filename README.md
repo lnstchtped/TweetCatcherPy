@@ -160,5 +160,5 @@ except Exception as e:
 
 ## License
 
-This project is licensed under a proprietary license. See the [LICENSE.md](LICENSE.md) file for details.
+This project is licensed under a proprietary license. See the [LICENSE.md](https://github.com/lnstchtped/TweetCatcherPy/blob/master/LICENCE.md) file for details.
 
