@@ -175,12 +175,20 @@ class TweetCatcher:
         self.websocket = None
         self.websocket_messages = asyncio.Queue()
         self.heartbeat_interval = 30_000
-        self.running = True
+        self.running = False
+
+        self.listen_task = None
+        self.heartbeat_task = None
+        self.thread_exception = None
 
     async def heartbeat_handler(self):
         while self.running:
-            await self.send_heartbeat()
-            await asyncio.sleep(self.heartbeat_interval / 1000)
+            try:
+                await self.send_heartbeat()
+                await asyncio.sleep(self.heartbeat_interval / 1000)
+            except Exception as e:
+                self.thread_exception = e
+                break
 
     async def send_heartbeat(self):
         await self.websocket.send(json.dumps({
@@ -198,37 +206,49 @@ class TweetCatcher:
                         raise Exception(
                             f"Failed to init websocket connection: server returned: {wss_data.get('text', 'Unknown error')}")
                     case 4:
+                        await self.websocket_messages.put(wss_data)
+                        self.heartbeat_task = asyncio.create_task(self.heartbeat_handler())
                         break
                     case 10:
                         await self.websocket.send(json.dumps({
                             "op": 2,
                             "token": self.api_token
                         }))
-                        asyncio.create_task(self.heartbeat_handler())
                     case _:
                         pass
 
     async def start(self):
+        self.running = True
         await self.connect()
-        asyncio.create_task(self.listen())
+        self.listen_task = asyncio.create_task(self.listen())
 
     async def listen(self):
         while self.running:
-            message = json.loads(await self.websocket.recv())
-            if message.get("op") == 3:
-                raise Exception(
-                    f"WebSocket connection closed: {message.get('text', 'Unknown error')}")
-            await self.websocket_messages.put(message)
+            try:
+                message = json.loads(await self.websocket.recv())
+                if message.get("op") == 3:
+                    raise Exception(
+                        f"WebSocket connection closed: {message.get('text', 'Unknown error')}")
+                await self.websocket_messages.put(message)
+            except Exception as e:
+                self.thread_exception = e
 
     async def stop(self):
+        self.running = False
         try:
-            self.running = False
             await self.websocket.close()
-            await self.session.aclose()
-        except:
-            pass
+        except: pass
+        try:
+            self.listen_task.cancel()
+        except: pass
+        try:
+            self.heartbeat_task.cancel()
+        except: pass
 
     async def get_message(self):
+        if self.thread_exception:
+            raise self.thread_exception
+
         return await self.websocket_messages.get()
 
     async def do_request(self, url):
