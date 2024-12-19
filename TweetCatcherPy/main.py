@@ -205,7 +205,6 @@ class TweetCatcher:
                             "token": self.api_token
                         }))
                         asyncio.create_task(self.heartbeat_handler())
-                        break
                     case _:
                         pass
 
