@@ -14,6 +14,13 @@ pip install TweetCatcherPy
 
 ---
 
+## Note
+The Tweet Catcher Pro Plan is required to use this library.
+
+Purchase at: https://whop.com/tweetcatcher
+
+---
+
 ## Features
 
 - Create tasks to monitor Twitter users.
@@ -133,13 +140,17 @@ Connect to the WebSocket to receive real-time updates:
 
 ```python
 async def run_websocket():
-    await tweet_catcher.start()
-
     try:
+        await tweet_catcher.start()
+    
         while True:
             message = await tweet_catcher.get_message()
             print("New WebSocket Message:", message)
-    except KeyboardInterrupt:
+    
+    except Exception as e:
+        print("WebSocket Error:", e)
+        
+    finally:
         await tweet_catcher.stop()
 
 asyncio.run(run_websocket())

@@ -1,13 +1,15 @@
 import asyncio
 import json
+import re
+from dataclasses import dataclass, field
+from typing import List, Literal, Optional, Union
+
 import httpx
 import websockets
-from dataclasses import dataclass, field
-from typing import List, Literal, Union, Optional
-import re
 
 API_BASE_URL = "https://monitor-api.tweet-catcher.com:9999/pro"
 WSS_URL = "ws://monitor-api.tweet-catcher.com:42069"
+
 
 @dataclass
 class PingRegex:
@@ -15,7 +17,9 @@ class PingRegex:
 
     def __post_init__(self):
         if not isinstance(self.regex, re.Pattern):
-            raise ValueError("The `regex` argument must be a compiled regex pattern.")
+            raise ValueError(
+                "The `regex` argument must be a compiled regex pattern.")
+
 
 @dataclass
 class PingKeywords:
@@ -24,20 +28,25 @@ class PingKeywords:
 
     def __post_init__(self):
         if len(self.negative) == 0 and len(self.positive) == 0:
-            raise ValueError("At least one keyword (positive or negative) must be provided.")
+            raise ValueError(
+                "At least one keyword (positive or negative) must be provided.")
 
         if not all(isinstance(keyword, str) for keyword in self.negative):
-            raise ValueError("All elements in the `negative` list must be strings.")
+            raise ValueError(
+                "All elements in the `negative` list must be strings.")
 
         if not all(isinstance(keyword, str) for keyword in self.positive):
-            raise ValueError("All elements in the `positive` list must be strings.")
+            raise ValueError(
+                "All elements in the `positive` list must be strings.")
 
 
 @dataclass
 class CreateTaskArgs:
     username: str
-    options: List[str] = field(default_factory=lambda: ["posts", "retweets", "replies", "following", "userUpdates", "ocr"])
-    notification: Literal["discord", "telegram", "webhook", "websocket"] = "discord"
+    options: List[str] = field(default_factory=lambda: [
+                               "posts", "retweets", "replies", "following", "userUpdates", "ocr"])
+    notification: Literal["discord", "telegram",
+                          "webhook", "websocket"] = "discord"
 
     webhook: Optional[str] = None
     webhook_posts: Optional[str] = None
@@ -57,7 +66,8 @@ class CreateTaskArgs:
 
     def __post_init__(self):
         if not isinstance(self.username, str) or not self.username.strip():
-            raise ValueError("The `username` argument must be a non-empty string.")
+            raise ValueError(
+                "The `username` argument must be a non-empty string.")
 
         if len(self.options) == 0:
             raise ValueError("At least one option must be selected.")
@@ -65,39 +75,48 @@ class CreateTaskArgs:
         if "ocr" in self.options:
             required_options = {"posts", "retweets", "replies"}
             if not any(opt in self.options for opt in required_options):
-                raise ValueError("The `ocr` option requires at least one of `posts`, `retweets`, or `replies`.")
+                raise ValueError(
+                    "The `ocr` option requires at least one of `posts`, `retweets`, or `replies`.")
 
         if self.notification not in ["discord", "telegram", "webhook", "websocket"]:
             raise ValueError("Invalid notification type.")
 
         if self.notification == "discord":
             if not self.differentWebhooks and not self.webhook:
-                raise ValueError("The `webhook` argument is required when using the `discord` notification type (unless `differentWebhooks` is True).")
+                raise ValueError(
+                    "The `webhook` argument is required when using the `discord` notification type (unless `differentWebhooks` is True).")
 
         if self.notification == "webhook":
             if not self.webhook:
-                raise ValueError("The `webhook` argument is required when using the `webhook` notification type.")
+                raise ValueError(
+                    "The `webhook` argument is required when using the `webhook` notification type.")
 
         if self.notification == "telegram":
             if not self.differentWebhooks and not self.chatId:
-                raise ValueError("The `chatId` argument is required when using the `telegram` notification type.")
+                raise ValueError(
+                    "The `chatId` argument is required when using the `telegram` notification type.")
 
         if self.ping == "role" and not self.roleId:
-            raise ValueError("The `roleId` argument is required when using the `role` ping type.")
+            raise ValueError(
+                "The `roleId` argument is required when using the `role` ping type.")
 
         if self.pingKeywords:
             if not isinstance(self.pingKeywords, (PingRegex, PingKeywords)):
-                raise ValueError("The `pingKeywords` argument must be an instance of `PingRegex` or `PingKeywords`.")
+                raise ValueError(
+                    "The `pingKeywords` argument must be an instance of `PingRegex` or `PingKeywords`.")
 
         if self.differentWebhooks:
             if self.notification == "discord":
                 if not (self.webhook_posts and self.webhook_following and self.webhook_userUpdates):
-                    raise ValueError("`webhook-posts`, `webhook-following`, and `webhook-userUpdates` are required when using `differentWebhooks` with `discord`.")
+                    raise ValueError(
+                        "`webhook-posts`, `webhook-following`, and `webhook-userUpdates` are required when using `differentWebhooks` with `discord`.")
             elif self.notification == "telegram":
                 if not (self.chatId_posts and self.chatId_following and self.chatId_userUpdates):
-                    raise ValueError("`chatId-posts`, `chatId-following`, and `chatId-userUpdates` are required when using `differentWebhooks` with `telegram`.")
+                    raise ValueError(
+                        "`chatId-posts`, `chatId-following`, and `chatId-userUpdates` are required when using `differentWebhooks` with `telegram`.")
             else:
-                raise ValueError("The `differentWebhooks` argument can only be used with the `discord` or `telegram` notification types.")
+                raise ValueError(
+                    "The `differentWebhooks` argument can only be used with the `discord` or `telegram` notification types.")
 
     def __build_payload__(self):
         payload = {
@@ -145,6 +164,7 @@ class CreateTaskArgs:
 
         return payload
 
+
 class TweetCatcher:
     def __init__(self, api_token: str):
         self.api_token = api_token
@@ -182,9 +202,7 @@ class TweetCatcher:
                     case 10:
                         await self.websocket.send(json.dumps({
                             "op": 2,
-                            "d": {
-                                "token": self.api_token
-                            }
+                            "token": self.api_token
                         }))
                         asyncio.create_task(self.heartbeat_handler())
                         break
@@ -193,14 +211,23 @@ class TweetCatcher:
 
     async def start(self):
         await self.connect()
+        asyncio.create_task(self.listen())
 
+    async def listen(self):
         while self.running:
-            message = await self.websocket.recv()
+            message = json.loads(await self.websocket.recv())
+            if message.get("op") == 3:
+                raise Exception(
+                    f"WebSocket connection closed: {message.get('text', 'Unknown error')}")
             await self.websocket_messages.put(message)
 
     async def stop(self):
-        self.running = False
-        await self.websocket.close()
+        try:
+            self.running = False
+            await self.websocket.close()
+            await self.session.aclose()
+        except:
+            pass
 
     async def get_message(self):
         return await self.websocket_messages.get()
