@@ -253,22 +253,25 @@ class TweetCatcher:
 
     async def do_request(self, url):
         resp = await self.session.get(url)
+        resp.raise_for_status()
+
         resp = resp.json()
 
-        if resp.get("error"):
+        if isinstance(resp, dict) and resp.get("error"):
             raise Exception(f"Failed to do request: {resp['message']}")
 
         return resp
 
     async def get_user_info(self):
-        return self.do_request(f"{API_BASE_URL}/info")
+        return await self.do_request(f"{API_BASE_URL}/info")
 
     async def get_tasks(self):
-        return self.do_request(f"{API_BASE_URL}/tasks-list")
+        return await self.do_request(f"{API_BASE_URL}/tasks-list")
 
     async def create_task(self, args: CreateTaskArgs):
         payload = args.__build_payload__()
-        resp = await self.session.post(f"{API_BASE_URL}/create-task", json=payload)
+        resp = await self.session.post(f"{API_BASE_URL}/add-task", json=payload)
+        resp.raise_for_status()
         resp = resp.json()
 
         if resp.get("error"):
@@ -278,6 +281,7 @@ class TweetCatcher:
 
     async def start_task(self, task_id: int):
         resp = await self.session.post(f"{API_BASE_URL}/start-task", json={"id": task_id})
+        resp.raise_for_status()
         resp = resp.json()
 
         if resp.get("error"):
@@ -290,6 +294,7 @@ class TweetCatcher:
         payload["id"] = task_id
 
         resp = await self.session.post(f"{API_BASE_URL}/edit-task", json=payload)
+        resp.raise_for_status()
         resp = resp.json()
 
         if resp.get("error"):
